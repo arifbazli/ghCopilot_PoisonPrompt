@@ -8,23 +8,24 @@ malicious bash commands get correctly blocked.
 
 ## Repository Structure
 
+```text
 ghCopilot_PoisonPrompt/
 ├── .github/
-│ ├── workflows/
-│ │ └── guardrail-pentest.yml # CI pipeline (see below)
-│ └── skills/
-│ └── guardagent-pentest/
-│ ├── SKILL.md # Agent-facing skill definition
-│ ├── test_cases/
-│ │ └── prompts.yaml # Poison-prompt test bank
-│ └── rules/
-│ └── rules.yaml # Guardrail detection patterns
+│   ├── workflows/
+│   │   └── guardrail-pentest.yml       # CI pipeline
+│   └── skills/
+│       └── guardagent-pentest/
+│           ├── SKILL.md                 # Agent-facing skill definition
+│           ├── test_cases/
+│           │   └── prompts.yaml         # Poison-prompt test bank
+│           └── rules/
+│               └── rules.yaml           # Guardrail detection patterns
 ├── scripts/
-│ └── run_pentest.py # Test harness (evaluation engine)
+│   └── run_pentest.py                   # Test harness (evaluation engine)
 ├── docs/
-│ └── baseline-before.md # Documented "before" baseline results
+│   └── baseline-before.md               # Documented before-baseline results
 └── README.md
-
+```
 
 ## Workflow Architecture
 
