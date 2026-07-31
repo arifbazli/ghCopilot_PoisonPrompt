@@ -1,8 +1,45 @@
 # GuardAgent PenTest — Poison-Prompt Testing for GitHub Copilot CLI
 
-A guardrail testing framework for GitHub Copilot CLI. Runs benign and
-poisoned prompts against Copilot CLI to validate whether destructive or
-malicious bash commands get correctly blocked.
+A guardrail testing framework for GitHub Copilot CLI, built as a
+learning resource for **AI penetration testing (AI red-teaming)** — the
+practice of deliberately attacking an AI system to find where its safety
+controls break, before a real attacker does.
+
+### Why This Matters
+
+AI coding assistants like Copilot CLI can read files, run shell
+commands, and make decisions based on natural-language instructions.
+That flexibility is also an attack surface: a malicious or careless
+prompt can trick an AI agent into running a destructive command, leaking
+a secret, or opening a backdoor — the same way SQL injection tricks a
+database into running unintended queries.
+
+This is called a **prompt injection** or **poison prompt** attack. The
+defensive layer that catches it is usually called a **guardrail**.
+
+### Key Concepts (for newcomers)
+
+| Term | Meaning |
+|---|---|
+| **Poison prompt** | An input crafted to make an AI agent take a harmful action it wasn't meant to |
+| **Guardrail** | A detection/prevention layer that blocks harmful actions before they execute |
+| **Instruction override** | An attack that tries to make the AI ignore its original instructions (e.g. "ignore all previous instructions...") |
+| **RCE (remote code execution)** | Tricking the AI into downloading and running attacker-controlled code |
+| **Exfiltration** | Getting the AI to leak sensitive data (credentials, keys, source code) to an external destination |
+| **Regression testing (for security)** | Re-running known attacks after every change, to make sure a fix doesn't silently break |
+
+### What This Repo Actually Does
+
+Runs a bank of benign and poisoned prompts against Copilot CLI's
+guardrail logic to validate whether destructive or malicious bash
+commands get correctly blocked — and does it automatically in CI, so
+every change to the detection rules is checked against the full attack
+bank before it ships.
+
+If you're new to this space, start with:
+1. `docs/architecture.md` — how the pieces fit together
+2. `.github/skills/guardagent-pentest/test_cases/prompts.yaml` — real example attacks
+3. `docs/baseline-before.md` — a real example of a guardrail gap being found and fixed
 
 ---
 
