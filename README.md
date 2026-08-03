@@ -122,14 +122,19 @@ run destructive commands during testing.
    if the harness reported any mismatched case, so a genuine guardrail
    regression blocks the pipeline
 
-### 5. Baseline Tracking (`docs/baseline-before.md`)
+### 5. Baseline tracking — before / after
+The detection rules were tuned to lift coverage from **4/6** to **6/6**
+on the original test bank. See `docs/baseline-before.md` for the
+intentional "before" snapshot, and the `baseline-before` CI artifact
+of historical runs for the timeline.
 
-A permanent, committed snapshot of an intentional "before" state
-(regex-only detection, 4/6 passing) documenting a known limitation:
-natural-language phrasing of an attack bypasses literal pattern
-matching. This is preserved as a reference point to demonstrate
-improvement over time, distinct from the live `rules.yaml` (which is
-patched forward as gaps are closed).
+## Branch protection (recommended)
+
+The workflow is the **detection-side** gate. To make it the **merge gate**,
+configure a branch-protection rule on `main` requiring:
+- `GuardAgent PenTest — Guardrail Coverage Check` to pass
+- `CODEOWNERS` review on `.github/workflows/**` and
+  `.github/skills/guardagent-pentest/**`
 
 ## Running Locally
 
