@@ -1,0 +1,188 @@
+name: Action SHA drift check
+
+# Periodic verification of the SHA-pinned third-party Actions in
+# guardrail-pentest.yml. When a pinned SHA no longer matches the upstream
+# tag, this workflow comments on issue #4 so a maintainer can decide
+# whether to bump. No auto-bump, no auto-PR — supply-chain hygiene with
+# a human-in-the-loop.
+#
+# Related: issue #4, PR #1 (the original pinning), README.md.
+
+on:
+  schedule:
+    # Weekly Monday 08:00 UTC (after most upstream tag pushes).
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    # Manual trigger via gh workflow run actions-version-check.yml.
+
+permissions:
+  contents: read   # git ls-remote
+  issues: write    # comment on issue #4 on drift
+
+jobs:
+  check:
+    name: Compare pinned SHAs vs upstream tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.2.2
+
+      - name: Extract pinned SHAs and tags from guardrail-pentest.yml
+        id: parse
+        env:
+          WORKFLOW: .github/workflows/guardrail-pentest.yml
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, os, json
+          text = open(os.environ["WORKFLOW"]).read()
+          # Match `uses: <owner>/<repo>@<sha>  # <tag-comment>`
+          # (also tolerate the no-comment form, in which case the tag is "").
+          pattern = re.compile(
+              r"uses:\s+(?P<owner>[a-zA-Z0-9_.-]+)/(?P<repo>[a-zA-Z0-9_.-]+)@(?P<sha>[0-9a-f]{40})"
+              r"(?:\s*#\s*(?P<tag>\S+))?"
+          )
+          rows = []
+          for m in pattern.finditer(text):
+              owner, repo, sha, tag = m["owner"], m["repo"], m["sha"], (m["tag"] or "")
+              if owner in {"github", "github-actions"}:
+                  # First-party (e.g. `github/codeql-action/upload-sarif`) are
+                  # covered by GH-managed security, skip them.
+                  continue
+              rows.append({"owner": owner, "repo": repo, "sha": sha, "tag": tag})
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a") as fh:
+              fh.write(f"actions={json.dumps(rows, separators=(',', ':'))}\n")
+          print(f"Parsed {len(rows)} third-party Action(s):")
+          for r in rows:
+              print(f"  {r['owner']}/{r['repo']} @ {r['sha'][:12]}  (tag={r['tag'] or '<none>'})")
+          PY
+
+      - name: Compare each pinned SHA against the upstream tag
+        id: diff
+        env:
+          ACTIONS_JSON: ${{ steps.parse.outputs.actions }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request, ssl
+          rows = json.loads(os.environ["ACTIONS_JSON"])
+          ctx = ssl.create_default_context()
+          drift = []
+          ok = []
+          for r in rows:
+              if not r["tag"]:
+                  # No upstream tag pinned (e.g. v1 of an internal action).
+                  # We can't auto-verify; skip but record.
+                  ok.append({**r, "status": "no-tag-pinned"})
+                  continue
+              url = f"https://github.com/{r['owner']}/{r['repo']}.git"
+              ref = f"refs/tags/{r['tag']}"
+              try:
+                  out = subprocess.check_output(
+                      ["git", "ls-remote", url, ref],
+                      stderr=subprocess.DEVNULL, timeout=30,
+                  )
+              except Exception as e:
+                  drift.append({**r, "status": "ls-remote-failed", "error": str(e)})
+                  continue
+              upstream_sha = ""
+              for line in out.decode().splitlines():
+                  sha, name = line.split("\t", 1)
+                  if name == ref:
+                      upstream_sha = sha
+                      break
+              if not upstream_sha:
+                  drift.append({**r, "status": "tag-missing-upstream", "upstream": ""})
+              elif upstream_sha != r["sha"]:
+                  drift.append({**r, "status": "drifted", "upstream": upstream_sha})
+              else:
+                  ok.append({**r, "status": "match", "upstream": upstream_sha})
+          report = {"drift": drift, "ok": ok}
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a") as fh:
+              fh.write(f"report={json.dumps(report, separators=(',', ':'))}\n")
+          print(f"Drifted: {len(drift)}  OK: {len(ok)}")
+          for d in drift:
+              print(f"  DRIFT  {d['owner']}/{d['repo']}  pinned={d['sha'][:12]}  upstream={d.get('upstream','')[:12]}  ({d['status']})")
+          PY
+
+      - name: Comment on issue #4 if any drift was detected
+        if: ${{ fromJSON(steps.diff.outputs.report).drift.length > 0 }}
+        env:
+          REPORT: ${{ steps.diff.outputs.report }}
+          ISSUE_NUMBER: 4
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, datetime, hashlib
+          rpt = json.loads(os.environ["REPORT"])
+          drift = rpt["drift"]
+          ok = rpt["ok"]
+          issue = os.environ["ISSUE_NUMBER"]
+          token = os.environ["GH_TOKEN"]
+          now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+          lines = [
+              f"## SHA drift detected — {now}",
+              "",
+              f"_{len(drift)} pinned Action(s) in `.github/workflows/guardrail-pentest.yml` no longer match their upstream tag._",
+              "",
+              "| Action | Pinned SHA | Upstream SHA | Tag | Status |",
+              "|---|---|---|---|---|",
+          ]
+          for d in drift:
+              upstream = d.get("upstream") or "_(none)_"
+              lines.append(
+                  f"| `{d['owner']}/{d['repo']}` | `{d['sha'][:12]}` | `{upstream[:12] if upstream != '_(none)_' else '_(none)_'}` | `{d['tag']}` | {d['status']} |"
+              )
+          lines += [
+              "",
+              f"### What to do",
+              "",
+              "1. Decide per row: bump to the new upstream SHA, or stay on the old one.",
+              "2. If bumping, open a PR that updates the SHA in `.github/workflows/guardrail-pentest.yml` (and the \"Tag at audit time\" line in issue #4).",
+              "3. If staying, leave a comment here with the reason and link to the upstream release notes / security advisory.",
+              "",
+              f"### Unchanged ({len(ok)})",
+              "",
+          ]
+          for o in ok:
+              lines.append(f"- `{o['owner']}/{o['repo']}` @ `{o['sha'][:12]}` (tag `{o['tag'] or '<none>'}`): {o['status']}")
+          lines += [
+              "",
+              "---",
+              "",
+              f"_Run: [`${{ github.run_id }}`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_",
+          ]
+          body = "\n".join(lines)
+
+          # Dedup: only post if the last 5 comments on the issue don't already contain this exact drift signature.
+          sig = hashlib.sha256(
+              ("|".join(sorted(d["owner"] + "/" + d["repo"] + "@" + d.get("upstream", d["sha"]) for d in drift))).encode()
+          ).hexdigest()[:12]
+          list_proc = subprocess.run(
+              ["gh", "issue", "view", issue, "--json", "comments", "--jq", ".comments[-5:] | .[].body"],
+              capture_output=True, text=True, check=True, env={**os.environ, "GH_TOKEN": token},
+          )
+          recent = list_proc.stdout
+          if f"drift-sig:{sig}" in recent:
+              print(f"Signature {sig} already in recent comments; skipping to avoid noise.")
+          else:
+              # Add the dedup-sig marker to the body, then post.
+              body = body + f"\n\n<!-- drift-sig:{sig} -->\n"
+              subprocess.run(
+                  ["gh", "issue", "comment", issue, "--body", body],
+                  check=True, env={**os.environ, "GH_TOKEN": token},
+              )
+              print(f"Posted drift comment with signature {sig}.")
+          PY
+
+      - name: Mark workflow as failed if drift detected
+        if: ${{ fromJSON(steps.diff.outputs.report).drift.length > 0 }}
+        run: |
+          echo "::error::Drift detected; see the comment on issue #4 for details."
+          exit 1
