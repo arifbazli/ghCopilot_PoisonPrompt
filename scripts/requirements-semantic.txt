@@ -1,0 +1,17 @@
+# Pinned dependencies for the optional semantic/intent detector (phase-3, issue #2).
+# Install on top of requirements.txt ONLY when SALUS_PENTEST_SEMANTIC=1 is set.
+#
+# These are large (torch ~250MB, sentence-transformers ~5MB, model ~80MB), so
+# the default CI run does NOT install them — the pentest stays <1s and the
+# model download is not pulled in for every PR.
+#
+# CPU-only torch is sufficient for the model used here (all-MiniLM-L6-v2, 384-dim).
+# If you need GPU, install torch from the CUDA index separately.
+
+# CPU-only torch (avoids pulling the ~2GB CUDA wheels)
+--index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+--extra-index-url https://pypi.org/simple
+
+sentence-transformers==3.2.1
+numpy==1.26.4

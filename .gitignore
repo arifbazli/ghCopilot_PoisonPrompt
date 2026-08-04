@@ -2,3 +2,4 @@ pentest-report.json
 .venv/
 __pycache__/
 *.pyc
+.cache/
