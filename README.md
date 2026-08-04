@@ -229,7 +229,7 @@ is the **merge gate** that turns coverage into a hard requirement.
 | `enforce_admins` | **true** | Even admins must follow the rule; no hotfix bypass |
 | `required_status_checks.contexts` | `["Run guardrail pentest"]` | The 18/18 pentest must pass on the latest commit |
 | `required_status_checks.strict` | **true** | Branch must be up-to-date with `main` before merge |
-| `required_pull_request_reviews.required_approving_review_count` | `1` | One approving review |
+| `required_pull_request_reviews.required_approving_review_count` | `0` | **No review required.** Was `1` originally; reduced on 2026-08-04 because the repo has only one collaborator and GitHub blocks self-approval of own PRs, making `1` unsatisfiable. The status check + linear history + conversation-resolution gates still apply. Re-set to `1` when a 2nd maintainer is added. |
 | `required_pull_request_reviews.dismiss_stale_reviews` | **true** | New pushes after approval invalidate the review |
 | `required_pull_request_reviews.require_code_owner_reviews` | **false** | Dropped because the repo has only one collaborator (`@arifbazli`); GitHub blocks self-approval when the requester is the sole code owner. **The `.github/CODEOWNERS` file remains in place** and will activate automatically when a 2nd maintainer is added (no further changes needed). |
 | `required_linear_history` | **true** | No merge commits — squash or rebase only |
