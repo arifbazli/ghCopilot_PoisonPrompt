@@ -43,7 +43,9 @@ If you're new to this space, start with:
 
 ---
 
-## Recent changes (v1.1 — PR [#1](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/1), merged 2026-08-03)
+## Recent changes
+
+### v1.1 (PR [#1](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/1), merged 2026-08-03)
 
 The original 6-case test bank was **self-confirming** — its prompts
 literally contained the substrings the rules searched for, so a 6/6
@@ -69,7 +71,18 @@ Other changes in v1.1:
   audit trail (the review itself lives in a sibling path on the
   original clone and is not committed to the repo).
 
-Open and closed follow-up work:
+### v1.2 (PRs [#5](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/5)–[#9](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/9), merged 2026-08-03/04)
+
+Documentation, CI hardening, and the three follow-up issues from v1.1:
+
+- **PR #5** — README aligned with v1.1 (bank size, venv install, fork gate, schema).
+- **PR #6** — added `.github/workflows/actions-version-check.yml` (closes issue #4): weekly scheduled job compares the 3 SHA-pinned Actions against upstream and posts a dedup-signed comment on issue #4 if any drift is detected. No auto-bump, human-in-the-loop. The 3 pinned SHAs from v1.1 **already drift** upstream at the time of v1.2 — a maintainer decision is needed on whether to bump them.
+- **PR #7** — widened pentest `pull_request.paths` trigger from just `.github/skills/guardagent-pentest/**` to also include `.github/workflows/**` and `.github/CODEOWNERS`, so workflow-file PRs and CODEOWNERS changes are also gated on the 18/18 pentest.
+- **PR #8** — README updated to reflect the *actual* applied branch-protection rule; shipped `docs/branch-protection.json` (canonical payload for re-applying). Also widened the pentest path filter to include `docs/**` so docs PRs that touch the guardrail contract are gated.
+- **PR #9** — `required_approving_review_count` reduced from `1` → `0` to break the single-maintainer self-approval deadlock; `docs/branch-protection.json` and README updated to match.
+
+### Open and closed follow-up work
+
 - [#2 Phase-3 semantic detector](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/2) — synonym-resistance still bypasses regex (deferred, requires LLM-provider decision; see issue body)
 - ~~[#3 Branch protection on `main`](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3)~~ — **closed 2026-08-03** (rule applied; see §6 below)
 - ~~[#4 Action SHA maintenance](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/4)~~ — **closed 2026-08-03** (weekly drift checker added in PR #6)
@@ -83,7 +96,8 @@ ghCopilot_PoisonPrompt/
 ├── .github/
 │   ├── CODEOWNERS                       # Reviewer ownership for security paths
 │   ├── workflows/
-│   │   └── guardrail-pentest.yml        # CI pipeline (9 steps)
+│   │   ├── guardrail-pentest.yml        # CI pipeline (9 steps, pentest on PR/push/schedule)
+│   │   └── actions-version-check.yml    # Weekly SHA-drift detector (closes #4)
 │   └── skills/
 │       └── guardagent-pentest/
 │           ├── SKILL.md                 # Agent-facing skill definition
@@ -96,7 +110,8 @@ ghCopilot_PoisonPrompt/
 │   └── requirements.txt                 # Pinned PyYAML
 ├── docs/
 │   ├── architecture.md                  # High-level architecture
-│   └── baseline-before.md               # Documented before-baseline results
+│   ├── baseline-before.md               # Documented before-baseline results
+│   └── branch-protection.json           # Canonical payload for the applied rule
 ├── IMPLEMENTATION_SUMMARY.md            # Change log for v1.1 (PR #1)
 └── README.md
 ```
@@ -178,10 +193,12 @@ text for triage.
 
 | Trigger | When |
 |---|---|
-| `push` | Any push touching `.github/skills/guardagent-pentest/**` or the workflow file itself |
-| `pull_request` | Any PR touching the skill files |
+| `push` | Any push touching `.github/skills/guardagent-pentest/**` or the pentest workflow file itself |
+| `pull_request` | Any PR touching `.github/skills/guardagent-pentest/**`, `.github/workflows/**`, `.github/CODEOWNERS`, or `docs/**` (path filter widened in PR #7 and PR #8 so workflow-file PRs, CODEOWNERS changes, and guardrail-contract docs are also gated on the 18/18 pentest) |
 | `schedule` | Daily at 06:00 UTC (14:00 MYT) — regression check |
 | `workflow_dispatch` | Manual trigger via `gh workflow run` or the Actions tab |
+
+> **Action SHA drift:** the 3 pinned SHAs (`actions/checkout@b4ffde65…`, `actions/setup-python@0a5c6159…`, `actions/upload-artifact@5d5d22a3…`) correspond to upstream tags `v4.2.2` / `v5.6.0` / `v4` at audit time. As of v1.2 those upstream tags have moved; the weekly `actions-version-check.yml` (PR #6) posts a comment on issue #4 when drift is detected, and a maintainer decides whether to bump. Do **not** edit the SHAs in `guardrail-pentest.yml` without first reading the drift comment on issue #4 and the upstream release notes for each Action.
 
 **Steps (9 in v1.1):**
 1. **Checkout repository** — pinned to `actions/checkout@b4ffde65…` (v4.2.2)
@@ -254,14 +271,26 @@ gh api -X PUT repos/arifbazli/ghCopilot_PoisonPrompt/branches/main/protection \
 ```
 
 **Adding a 2nd maintainer later:** when a new collaborator with `push`
-permission is invited, edit `.github/CODEOWNERS` to add them (or set
-`require_code_owner_reviews: true` in the protection payload) to
-re-enable the stricter gate. The repo's CODEOWNERS file is already in
-the right shape for this — no further edits required when a maintainer
-joins.
+permission is invited, the rule needs two changes to re-enable the
+stricter review gate:
 
-Closed via PR: [#3](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3)
-PRs that depend on this rule: [#6 (SHA-drift checker, merged)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/6), [#7 (path-filter widening, open)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/7)
+1. **`PATCH` the review count from `0` → `1`:**
+   ```bash
+   gh api -X PUT repos/arifbazli/ghCopilot_PoisonPrompt/branches/main/protection \
+     --input docs/branch-protection.json
+   ```
+   (after first editing `docs/branch-protection.json` to set
+   `required_approving_review_count: 1` and
+   `require_code_owner_reviews: true`).
+2. **Edit `.github/CODEOWNERS`** to add the new maintainer (or rely on
+   the existing paths, which already point at `@arifbazli` — add the new
+   maintainer alongside, e.g. `@arifbazli @newmaintainer`).
+
+The repo's CODEOWNERS file is already in the right shape for this — no
+structural changes are needed when a maintainer joins, only an edit to
+add their handle.
+
+Closed via issue [#3](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3) (2026-08-03). PRs that depend on this rule: [#6 SHA-drift checker (merged)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/6), [#7 path-filter widening (merged)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/7), [#8 README + canonical JSON (merged)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/8), [#9 count=0 sync (merged)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/9).
 
 ## Running Locally
 
