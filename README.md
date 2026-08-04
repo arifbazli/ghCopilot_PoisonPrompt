@@ -69,10 +69,10 @@ Other changes in v1.1:
   audit trail (the review itself lives in a sibling path on the
   original clone and is not committed to the repo).
 
-Open follow-up work is tracked as:
-- [#2 Phase-3 semantic detector](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/2) — synonym-resistance still bypasses regex
-- [#3 Branch protection on `main`](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3) — turn the workflow into the merge gate
-- [#4 Action SHA maintenance](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/4) — periodic re-verification of pinned commits
+Open and closed follow-up work:
+- [#2 Phase-3 semantic detector](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/2) — synonym-resistance still bypasses regex (deferred, requires LLM-provider decision; see issue body)
+- ~~[#3 Branch protection on `main`](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3)~~ — **closed 2026-08-03** (rule applied; see §6 below)
+- ~~[#4 Action SHA maintenance](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/4)~~ — **closed 2026-08-03** (weekly drift checker added in PR #6)
 
 ---
 
@@ -218,16 +218,50 @@ The 12 synonym-substitution probes listed in issue #2 still bypass the
 regex layer today; that is the scope of the phase-3 semantic/intent
 detector, not a regex fix.
 
-### 6. Branch protection (recommended)
+### 6. Branch protection (applied)
 
-The workflow is the **detection-side** gate. To make it the **merge gate**,
-configure a branch-protection rule on `main` requiring:
-- `Run guardrail pentest` (the job name in `.github/workflows/guardrail-pentest.yml`) to pass
-- `CODEOWNERS` review on `.github/workflows/**` and
-  `.github/skills/guardagent-pentest/**`
-- Linear history; no force-push; no deletion
+The workflow is the **detection-side** gate. The branch-protection rule
+on `main` (applied 2026-08-03 per issue [#3](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3))
+is the **merge gate** that turns coverage into a hard requirement.
 
-Tracked in issue [#3](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3).
+| Setting | Value | Why |
+|---|---|---|
+| `enforce_admins` | **true** | Even admins must follow the rule; no hotfix bypass |
+| `required_status_checks.contexts` | `["Run guardrail pentest"]` | The 18/18 pentest must pass on the latest commit |
+| `required_status_checks.strict` | **true** | Branch must be up-to-date with `main` before merge |
+| `required_pull_request_reviews.required_approving_review_count` | `1` | One approving review |
+| `required_pull_request_reviews.dismiss_stale_reviews` | **true** | New pushes after approval invalidate the review |
+| `required_pull_request_reviews.require_code_owner_reviews` | **false** | Dropped because the repo has only one collaborator (`@arifbazli`); GitHub blocks self-approval when the requester is the sole code owner. **The `.github/CODEOWNERS` file remains in place** and will activate automatically when a 2nd maintainer is added (no further changes needed). |
+| `required_linear_history` | **true** | No merge commits — squash or rebase only |
+| `allow_force_pushes` | **false** | History is immutable from `main` |
+| `allow_deletions` | **false** | `main` cannot be deleted |
+| `required_conversation_resolution` | **true** | All PR comments must be resolved before merge |
+
+**To verify the rule is live:**
+
+```bash
+gh api repos/arifbazli/ghCopilot_PoisonPrompt/branches/main/protection
+```
+
+**To regenerate the rule (e.g. after a settings migration):**
+
+The canonical payload lives at `docs/branch-protection.json` in this repo.
+The recommended approach is to re-run the `PUT` with that file:
+
+```bash
+gh api -X PUT repos/arifbazli/ghCopilot_PoisonPrompt/branches/main/protection \
+  --input docs/branch-protection.json
+```
+
+**Adding a 2nd maintainer later:** when a new collaborator with `push`
+permission is invited, edit `.github/CODEOWNERS` to add them (or set
+`require_code_owner_reviews: true` in the protection payload) to
+re-enable the stricter gate. The repo's CODEOWNERS file is already in
+the right shape for this — no further edits required when a maintainer
+joins.
+
+Closed via PR: [#3](https://github.com/arifbazli/ghCopilot_PoisonPrompt/issues/3)
+PRs that depend on this rule: [#6 (SHA-drift checker, merged)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/6), [#7 (path-filter widening, open)](https://github.com/arifbazli/ghCopilot_PoisonPrompt/pull/7)
 
 ## Running Locally
 
