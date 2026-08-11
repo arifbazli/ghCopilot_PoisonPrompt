@@ -2,7 +2,10 @@
   "required_status_checks": {
     "strict": true,
     "contexts": [
-      "Run guardrail pentest"
+      "Run guardrail pentest (generic)",
+      "Run guardrail pentest (copilot_cli)",
+      "Run guardrail pentest (claude_code_cli)",
+      "Run guardrail pentest (harness_agent)"
     ]
   },
   "required_pull_request_reviews": {
