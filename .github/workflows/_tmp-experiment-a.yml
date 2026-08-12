@@ -26,16 +26,17 @@ jobs:
           pip install -r scripts/requirements-semantic.txt
 
       - name: End-to-end run (all 4 scopes, --enable-semantic)
+        continue-on-error: true
         run: |
           . .venv/bin/activate
           echo "===== generic ====="
-          python scripts/run_pentest.py --enable-semantic --report-path r-generic.json
+          python scripts/run_pentest.py --enable-semantic --report-path r-generic.json || true
           echo "===== copilot_cli ====="
-          python scripts/run_pentest.py --enable-semantic --target copilot_cli --report-path r-copilot.json
+          python scripts/run_pentest.py --enable-semantic --target copilot_cli --report-path r-copilot.json || true
           echo "===== claude_code_cli ====="
-          python scripts/run_pentest.py --enable-semantic --target claude_code_cli --report-path r-claude.json
+          python scripts/run_pentest.py --enable-semantic --target claude_code_cli --report-path r-claude.json || true
           echo "===== harness_agent ====="
-          python scripts/run_pentest.py --enable-semantic --target harness_agent --report-path r-harness.json
+          python scripts/run_pentest.py --enable-semantic --target harness_agent --report-path r-harness.json || true
 
       - name: Summarize end-to-end failures (if any)
         if: always()
@@ -52,6 +53,7 @@ jobs:
           PY
 
       - name: Detailed relative-scoring measurement
+        if: always()
         run: |
           . .venv/bin/activate
           python - <<'PY'
