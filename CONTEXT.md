@@ -122,6 +122,30 @@ fail-open; nothing about CI changes unless a workflow opts in. The
 report's `semantic.fail_closed` field records which mode a given run
 used.
 
+## Known limitations (observed in practice)
+
+- **Fail-open has been observed in practice, not just theorized.**
+  During the 2026-08-12 post-merge verification of the `tool_scope_abuse`
+  relative-scoring change, a fresh runner with a cold model cache hit a
+  transient HuggingFace Hub connectivity failure (`We couldn't connect
+  to 'https://huggingface.co'...`). The harness did exactly what
+  fail-open is documented to do: printed a `WARNING` and fell back to
+  regex-only verdicts for that run. 3 `semantic_only` cases (33, 34, 35)
+  showed `actual: allow` — not false positives, but real semantic
+  coverage loss for that specific run. A retry a minute later (warm-ish
+  network, same runner type) succeeded cleanly with the expected
+  31/31/36/36/39/39/39/39. This is the fail-open design working
+  correctly, not a bug — but it's a concrete example, not an abstract
+  caveat, and worth internalizing: **a fail-open run can report 100%
+  pass while having tested strictly fewer cases than intended.** Anyone
+  relying on a scheduled semantic-pentest run for compliance/audit
+  purposes should check that run's `semantic.status` field in the JSON
+  report artifact (`ready` vs `import_error`/`load_error`) — not just
+  the `passed`/`failed` counts — before treating a green run as proof
+  that semantic coverage actually executed. `--fail-closed` (see above)
+  exists precisely for callers that can't tolerate this ambiguity, but
+  it is opt-in, not the default, and no CI workflow currently opts in.
+
 ## Simulated approval-state layer (`scripts/simulate_approval.py`)
 
 A second, independent testing dimension from deny/allow detection —
