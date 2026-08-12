@@ -112,6 +112,16 @@ distinction, and the `id`/`maps_to`-equals-category convention all live
 in that file's own header comment — treat it as the source of truth,
 not a copy here.
 
+**Fail-open vs fail-closed:** by default, a semantic-layer load failure
+(missing `semantic_rules.yaml`, missing deps, model load error) prints a
+`WARNING` and falls back to regex-only verdicts for that run — the
+harness never crashes just because the optional layer couldn't load.
+`--fail-closed` / `SALUS_PENTEST_FAIL_CLOSED=1` flips both failure paths
+to a hard `return 2` (`ERROR`, not `WARNING`) instead. Default stays
+fail-open; nothing about CI changes unless a workflow opts in. The
+report's `semantic.fail_closed` field records which mode a given run
+used.
+
 ## CI pipeline (`.github/workflows/guardrail-pentest.yml`)
 
 **Triggers:** `push`/`pull_request` on skill files, workflows,

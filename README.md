@@ -116,6 +116,9 @@ python3 scripts/run_pentest.py --list-only
 # optional semantic/paraphrase layer (~250 MB install; see CONTEXT.md)
 pip install -r scripts/requirements-semantic.txt
 python3 scripts/run_pentest.py --enable-semantic
+
+# make a semantic-layer load failure a hard error instead of a warning
+python3 scripts/run_pentest.py --enable-semantic --fail-closed
 ```
 
 Local runs are byte-identical to CI: same Python 3.12, same venv install
@@ -149,7 +152,10 @@ applied branch-protection settings are all documented in `CONTEXT.md`.
   gitignored `.cache/semantic-refs/` embedding cache.
 - **English-only.** Patterns and references are tuned for English;
   multilingual paraphrases aren't covered.
-- **Semantic layer is fail-open.** A model load failure (network error,
-  disk space) prints a warning and falls back to regex-only verdicts —
-  a deliberate choice for this learning repo; a production fork should
-  override with fail-closed.
+- **Semantic layer is fail-open by default.** A model load failure
+  (network error, disk space, missing deps) prints a warning and falls
+  back to regex-only verdicts — a deliberate choice for this learning
+  repo, so a broken install doesn't block the whole run. Pass
+  `--fail-closed` (or set `SALUS_PENTEST_FAIL_CLOSED=1`) to make that
+  same failure exit non-zero instead — for a caller that would rather
+  know loudly that semantic coverage silently dropped.
