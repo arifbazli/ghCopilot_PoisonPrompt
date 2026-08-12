@@ -17,6 +17,16 @@ Code CLI, or any other live agent process. The only thing it ever writes
 is `pentest-report.json` (or a `--report-path` override), and it writes
 that atomically.
 
+## Scope-of-testing policy
+
+This harness only ever tests prompts the maintainer wrote, evaluated
+against tools and repos the maintainer maintains. It is a
+**self-red-teaming exercise** — never a probe of a third party's
+live/production service, and never run against a target the maintainer
+doesn't own or control. Any new target, test case, or integration added
+to this repo must keep that true. This is deliberate and
+non-negotiable, decided 2026-08-12 — not an oversight to fix later.
+
 ## Architecture
 
 ```
@@ -176,6 +186,8 @@ that quotes attack vocabulary. Re-run the harness to confirm coverage.
 
 ## Hard invariants — must never break
 
+- **Scope-of-testing policy.** See above — self-red-teaming only, never
+  a third party's target.
 - **No live CLI calls.** The harness never shells out to Copilot CLI,
   Claude Code CLI, or any other agent process.
 - **No command execution.** Evaluation is regex/embedding matching
@@ -190,6 +202,27 @@ that quotes attack vocabulary. Re-run the harness to confirm coverage.
   because they can only pass with their overlay merged in; including
   them by default would guarantee false failures. `semantic_only` cases
   are excluded from that default scope too, for the same reason.
+
+## Deferred work (documented now, not implemented)
+
+Settled *if this is ever picked up* — written down now so the bar
+doesn't get relitigated (or skipped under time pressure) by a future
+contributor. None of this is scheduled or built; don't build toward it
+without a fresh discussion first.
+
+- **Live CLI invocation.** Today the harness only ever runs
+  simulated/static evaluation (confirmed 2026-08-12; see "No live CLI
+  calls" above). If live invocation is ever added, it must clear all
+  of the following before it ships:
+  - Runs in a throwaway, disposable environment (container or
+    equivalent) — never the maintainer's own machine or a shared CI
+    runner's persistent state.
+  - Network-egress-restricted — the live process should not be able to
+    reach anything beyond what the specific test requires.
+  - No real secrets, ever — synthetic/placeholder credentials only.
+  - Explicit, agreed-upon ownership of API cost before any run that
+    calls a paid model/API.
+  This is a gate, not a roadmap.
 
 ## File map
 
