@@ -1,0 +1,114 @@
+name: TEMP - Experiment A relative scoring (scratch, delete after use)
+on:
+  push:
+    paths:
+      - '.github/workflows/_tmp-experiment-a.yml'
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+          pip install -r scripts/requirements-semantic.txt
+
+      - name: End-to-end run (all 4 scopes, --enable-semantic)
+        run: |
+          . .venv/bin/activate
+          echo "===== generic ====="
+          python scripts/run_pentest.py --enable-semantic --report-path r-generic.json
+          echo "===== copilot_cli ====="
+          python scripts/run_pentest.py --enable-semantic --target copilot_cli --report-path r-copilot.json
+          echo "===== claude_code_cli ====="
+          python scripts/run_pentest.py --enable-semantic --target claude_code_cli --report-path r-claude.json
+          echo "===== harness_agent ====="
+          python scripts/run_pentest.py --enable-semantic --target harness_agent --report-path r-harness.json
+
+      - name: Summarize end-to-end failures (if any)
+        if: always()
+        run: |
+          . .venv/bin/activate
+          python - <<'PY'
+          import json, glob
+          for f in sorted(glob.glob("r-*.json")):
+              r = json.load(open(f))
+              print(f"{f}: total={r['total']} passed={r['passed']} failed={r['failed']} target={r.get('target')}")
+              for res in r["results"]:
+                  if not res["pass"]:
+                      print(f"    FAIL id={res['id']} category={res['category']} expected={res['expected']} actual={res['actual']} matched={res['matched_rules']}")
+          PY
+
+      - name: Detailed relative-scoring measurement
+        run: |
+          . .venv/bin/activate
+          python - <<'PY'
+          import re
+          import sys
+          sys.path.insert(0, "scripts")
+          import run_pentest as rp
+          from sentence_transformers import SentenceTransformer
+
+          MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+          model = SentenceTransformer(MODEL)
+
+          all_prompts = rp.load_prompts(rp.PROMPTS_PATH)
+          benign = [c for c in all_prompts if c["category"] == "benign"]
+          benign_texts = [c["prompt"] for c in benign]
+          semantic_only_by_category = {}
+          for c in all_prompts:
+              if c.get("semantic_only"):
+                  semantic_only_by_category.setdefault(c["category"], []).append(c)
+
+          sem_raw, sem_parsed = rp.load_semantic_rules(rp.SEMANTIC_RULES_PATH)
+          rules_by_id = {r["id"]: r for r in sem_parsed["rules"]}
+
+          WEAK = ["permission_bypass", "indirect_injection", "tool_scope_abuse"]
+
+          benign_embs = model.encode(benign_texts, convert_to_numpy=True, normalize_embeddings=True)
+
+          print(f"benign anchor count: {len(benign)}")
+          print(f"{'rule':<20}{'case':<6}{'attack_sim':<12}{'benign_sim':<12}{'gap':<10}{'hint_hit':<10}separates(gap>0.05)")
+          for rid in WEAK:
+              rule = rules_by_id[rid]
+              ref_embs = model.encode(rule["references"], convert_to_numpy=True, normalize_embeddings=True)
+              hints = [re.compile(p, re.IGNORECASE) for p in rule.get("regex_hints", [])]
+
+              # Check benign cases (leave-one-out) for false positives under relative scoring.
+              worst_gap_benign = None
+              for i, c in enumerate(benign):
+                  mask = [j for j in range(len(benign)) if j != i]
+                  b_embs = benign_embs[mask]
+                  attack_sim = float((benign_embs[i:i+1] @ ref_embs.T).max())
+                  benign_sim = float((benign_embs[i:i+1] @ b_embs.T).max()) if len(mask) else 0.0
+                  gap = attack_sim - benign_sim
+                  hint_hit = any(h.search(c["prompt"]) for h in hints)
+                  if worst_gap_benign is None or gap > worst_gap_benign[0]:
+                      worst_gap_benign = (gap, c["id"], hint_hit)
+                  if hint_hit and gap > rule.get("relative_margin", 0.05):
+                      print(f"  !! FALSE POSITIVE under relative scoring: rule={rid} benign id={c['id']} gap={gap:.4f}")
+
+              print(f"-- {rid}: worst-case benign gap = {worst_gap_benign[0]:.4f} (case id={worst_gap_benign[1]}, hint_hit={worst_gap_benign[2]}) --")
+
+              probes = semantic_only_by_category.get(rid, [])
+              for p in probes:
+                  p_emb = model.encode([p["prompt"]], convert_to_numpy=True, normalize_embeddings=True)
+                  attack_sim = float((p_emb @ ref_embs.T).max())
+                  benign_sim = float((p_emb @ benign_embs.T).max())
+                  gap = attack_sim - benign_sim
+                  hint_hit = any(h.search(p["prompt"]) for h in hints)
+                  separates = hint_hit and gap > rule.get("relative_margin", 0.05)
+                  print(f"{rid:<20}{p['id']:<6}{attack_sim:<12.4f}{benign_sim:<12.4f}{gap:<10.4f}{str(hint_hit):<10}{separates}")
+          PY
