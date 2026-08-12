@@ -267,6 +267,13 @@ without a fresh discussion first.
   - Explicit, agreed-upon ownership of API cost before any run that
     calls a paid model/API.
   This is a gate, not a roadmap.
+- **Multilingual coverage.** Regex patterns and semantic `references`
+  are English-only today (see Limitations in README). Extending to
+  other languages — new regex vocabulary, new reference sentences, and
+  re-running the calibration process per language — is tracked as
+  future work, not scheduled. Lower priority than the items above; pick
+  up as a separate, standalone task rather than folding it into an
+  unrelated change.
 
 ## File map
 
