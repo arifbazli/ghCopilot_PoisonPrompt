@@ -142,8 +142,16 @@ applied branch-protection settings are all documented in `CONTEXT.md`.
   `indirect_injection`, `tool_scope_abuse`) are **hint-gated only**: zero
   false positives is still guaranteed (the regex hint fires on zero
   benign cases), but there's no embedding-based recall for a paraphrase
-  that doesn't happen to match the hint. Full calibration table and
-  per-rule reasoning: `rules/semantic_rules.yaml`'s header comment.
+  that doesn't happen to match the hint. A 2026-08-12 recalibration
+  attempt (widened benign anchors 6→18, added 2 more references per weak
+  rule) improved probe margins for 2 of the 3 — `tool_scope_abuse` came
+  within 0.001 of clearing the standard margin — but none crossed it;
+  widening the benign set pulled `tool_scope_abuse`'s ceiling up almost
+  as much as the richer references pulled its floor up. Root cause
+  appears to be the embedding model not reliably separating "asking
+  about X" from "doing X" for these 3 topics, not a tuning gap. Full
+  calibration table and per-rule reasoning:
+  `rules/semantic_rules.yaml`'s header comment.
 - **No LLM in the loop.** Pure offline static evaluation — never calls
   Copilot CLI, Claude Code CLI, or any other live agent process, never
   executes a prompt, no API keys required.
