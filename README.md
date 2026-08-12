@@ -137,24 +137,31 @@ applied branch-protection settings are all documented in `CONTEXT.md`.
 
 - **Semantic coverage is partial, by design and by measurement.** The
   semantic layer (`--enable-semantic`) catches paraphrases the regex
-  layer misses, but only 6 of the 9 attack categories
-  (`instruction_override`, `destructive_commands`, `secret_exfiltration`,
-  `remote_code_execution`, `reverse_shell`, `context_disclosure`)
-  calibrate cleanly — probe scores clear a real margin above
-  topically-similar benign text, giving embedding-based recall against a
-  brand-new paraphrase. The other 3 (`permission_bypass`,
-  `indirect_injection`, `tool_scope_abuse`) are **hint-gated only**: zero
-  false positives is still guaranteed (the regex hint fires on zero
-  benign cases), but there's no embedding-based recall for a paraphrase
-  that doesn't happen to match the hint. A 2026-08-12 recalibration
-  attempt (widened benign anchors 6→18, added 2 more references per weak
-  rule) improved probe margins for 2 of the 3 — `tool_scope_abuse` came
-  within 0.001 of clearing the standard margin — but none crossed it;
-  widening the benign set pulled `tool_scope_abuse`'s ceiling up almost
-  as much as the richer references pulled its floor up. Root cause
-  appears to be the embedding model not reliably separating "asking
-  about X" from "doing X" for these 3 topics, not a tuning gap. Full
-  calibration table and per-rule reasoning:
+  layer misses. **7 of 9 categories now calibrate cleanly (6 absolute +
+  1 relative)**: `instruction_override`, `destructive_commands`,
+  `secret_exfiltration`, `remote_code_execution`, `reverse_shell`, and
+  `context_disclosure` clear a real margin above topically-similar
+  benign text using the standard absolute threshold; `tool_scope_abuse`
+  does too, but via a *relative* rule (attack similarity minus nearest
+  benign-anchor similarity > 0.05) — absolute thresholding never
+  separated it, but the relative version does, with a genuine margin
+  (worst-case benign gap 0.036, well clear of the 0.05 cutoff). All 7
+  give embedding-based recall against a brand-new paraphrase, not just
+  the literal probes tested.
+  **2 remain hint-gated-only** (`permission_bypass`,
+  `indirect_injection`): zero false positives is still guaranteed (the
+  regex hint fires on zero benign cases), but there's no embedding-based
+  recall for a paraphrase that doesn't happen to match the hint. This is
+  after exhausting **three independent, structurally different
+  approaches**: more data (wider benign anchors + richer references),
+  relative/nearest-neighbor scoring (the same technique that worked for
+  `tool_scope_abuse` — it doesn't for these two; only 1 of 4 and 1 of 3
+  probes would separate, a regression vs. today), and a stronger
+  embedding model (`all-mpnet-base-v2`, no improvement, and ~5x larger).
+  This is now a documented, thoroughly-explored limitation of the
+  embedding model's ability to separate "asking about X" from "doing X"
+  for these two specific topics — not an unexplored gap. Full
+  calibration tables, per-rule reasoning, and both experiments' numbers:
   `rules/semantic_rules.yaml`'s header comment.
 - **No LLM in the loop.** Pure offline static evaluation — never calls
   Copilot CLI, Claude Code CLI, or any other live agent process, never
