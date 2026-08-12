@@ -116,6 +116,13 @@ python3 scripts/run_pentest.py --list-only
 # optional semantic/paraphrase layer (~250 MB install; see CONTEXT.md)
 pip install -r scripts/requirements-semantic.txt
 python3 scripts/run_pentest.py --enable-semantic
+
+# make a semantic-layer load failure a hard error instead of a warning
+python3 scripts/run_pentest.py --enable-semantic --fail-closed
+
+# simulated approval-state layer (separate dimension: what would a
+# target's OWN documented approval mechanics do, given a verdict?)
+python3 scripts/simulate_approval.py
 ```
 
 Local runs are byte-identical to CI: same Python 3.12, same venv install
@@ -139,8 +146,16 @@ applied branch-protection settings are all documented in `CONTEXT.md`.
   `indirect_injection`, `tool_scope_abuse`) are **hint-gated only**: zero
   false positives is still guaranteed (the regex hint fires on zero
   benign cases), but there's no embedding-based recall for a paraphrase
-  that doesn't happen to match the hint. Full calibration table and
-  per-rule reasoning: `rules/semantic_rules.yaml`'s header comment.
+  that doesn't happen to match the hint. A 2026-08-12 recalibration
+  attempt (widened benign anchors 6→18, added 2 more references per weak
+  rule) improved probe margins for 2 of the 3 — `tool_scope_abuse` came
+  within 0.001 of clearing the standard margin — but none crossed it;
+  widening the benign set pulled `tool_scope_abuse`'s ceiling up almost
+  as much as the richer references pulled its floor up. Root cause
+  appears to be the embedding model not reliably separating "asking
+  about X" from "doing X" for these 3 topics, not a tuning gap. Full
+  calibration table and per-rule reasoning:
+  `rules/semantic_rules.yaml`'s header comment.
 - **No LLM in the loop.** Pure offline static evaluation — never calls
   Copilot CLI, Claude Code CLI, or any other live agent process, never
   executes a prompt, no API keys required.
@@ -149,7 +164,10 @@ applied branch-protection settings are all documented in `CONTEXT.md`.
   gitignored `.cache/semantic-refs/` embedding cache.
 - **English-only.** Patterns and references are tuned for English;
   multilingual paraphrases aren't covered.
-- **Semantic layer is fail-open.** A model load failure (network error,
-  disk space) prints a warning and falls back to regex-only verdicts —
-  a deliberate choice for this learning repo; a production fork should
-  override with fail-closed.
+- **Semantic layer is fail-open by default.** A model load failure
+  (network error, disk space, missing deps) prints a warning and falls
+  back to regex-only verdicts — a deliberate choice for this learning
+  repo, so a broken install doesn't block the whole run. Pass
+  `--fail-closed` (or set `SALUS_PENTEST_FAIL_CLOSED=1`) to make that
+  same failure exit non-zero instead — for a caller that would rather
+  know loudly that semantic coverage silently dropped.

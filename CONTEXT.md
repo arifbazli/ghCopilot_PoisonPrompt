@@ -17,6 +17,16 @@ Code CLI, or any other live agent process. The only thing it ever writes
 is `pentest-report.json` (or a `--report-path` override), and it writes
 that atomically.
 
+## Scope-of-testing policy
+
+This harness only ever tests prompts the maintainer wrote, evaluated
+against tools and repos the maintainer maintains. It is a
+**self-red-teaming exercise** — never a probe of a third party's
+live/production service, and never run against a target the maintainer
+doesn't own or control. Any new target, test case, or integration added
+to this repo must keep that true. This is deliberate and
+non-negotiable, decided 2026-08-12 — not an oversight to fix later.
+
 ## Architecture
 
 ```
@@ -102,6 +112,50 @@ distinction, and the `id`/`maps_to`-equals-category convention all live
 in that file's own header comment — treat it as the source of truth,
 not a copy here.
 
+**Fail-open vs fail-closed:** by default, a semantic-layer load failure
+(missing `semantic_rules.yaml`, missing deps, model load error) prints a
+`WARNING` and falls back to regex-only verdicts for that run — the
+harness never crashes just because the optional layer couldn't load.
+`--fail-closed` / `SALUS_PENTEST_FAIL_CLOSED=1` flips both failure paths
+to a hard `return 2` (`ERROR`, not `WARNING`) instead. Default stays
+fail-open; nothing about CI changes unless a workflow opts in. The
+report's `semantic.fail_closed` field records which mode a given run
+used.
+
+## Simulated approval-state layer (`scripts/simulate_approval.py`)
+
+A second, independent testing dimension from deny/allow detection —
+confirmed 2026-08-12 as **simulated-only** (never a live CLI call) and
+**deterministic instrumentation** (never an LLM-as-judge): given a
+prompt's already-computed `matched_categories` (the same regex+semantic
+union `evaluate()` produces), `classify_approval_state(target,
+prompt_text, matched_categories)` classifies which approval STATE a
+target's *documented* permission/approval mechanics would land in —
+`single_command_confirm` (default), `session_wide_bypass`
+(`--allow-all-tools` / `--dangerously-skip-permissions` /
+`bypassPermissions` mode), `partial_bypass_edits_only`
+(`claude_code_cli`'s `acceptEdits` mode only), or `auto_decline`
+(`harness_agent`-only — a tool call outside its configured scope
+rejected before any human-facing confirmation; a common least-privilege
+tool-scoping pattern, not a documented vendor flag like the other three
+states — flagged as a modeling assumption, not verified vendor fact).
+
+The insight this layer surfaces: most deny categories
+(`destructive_commands`, `secret_exfiltration`, `instruction_override`,
+`indirect_injection`, etc.) don't change a platform's own state — the
+platform just sees a request and asks about it, same as it would for a
+benign one. Only `permission_bypass` (and, for `harness_agent`,
+`tool_scope_abuse`) changes the platform's *persistent* state, which is
+exactly why `permission_bypass` is uniquely dangerous: the risk isn't
+"this one action is bad," it's "the safety net disappears for everything
+after this."
+
+Self-contained: `python scripts/simulate_approval.py` runs its own
+`TEST_CASES` list (regex-catchable bank cases only, so it needs no
+`--enable-semantic` deps) and reports pass/fail — same empirical-
+verification discipline as the main harness, just not wired into
+`run_pentest.py` itself (a deliberately separate, small module).
+
 ## CI pipeline (`.github/workflows/guardrail-pentest.yml`)
 
 **Triggers:** `push`/`pull_request` on skill files, workflows,
@@ -176,6 +230,8 @@ that quotes attack vocabulary. Re-run the harness to confirm coverage.
 
 ## Hard invariants — must never break
 
+- **Scope-of-testing policy.** See above — self-red-teaming only, never
+  a third party's target.
 - **No live CLI calls.** The harness never shells out to Copilot CLI,
   Claude Code CLI, or any other agent process.
 - **No command execution.** Evaluation is regex/embedding matching
@@ -191,6 +247,34 @@ that quotes attack vocabulary. Re-run the harness to confirm coverage.
   them by default would guarantee false failures. `semantic_only` cases
   are excluded from that default scope too, for the same reason.
 
+## Deferred work (documented now, not implemented)
+
+Settled *if this is ever picked up* — written down now so the bar
+doesn't get relitigated (or skipped under time pressure) by a future
+contributor. None of this is scheduled or built; don't build toward it
+without a fresh discussion first.
+
+- **Live CLI invocation.** Today the harness only ever runs
+  simulated/static evaluation (confirmed 2026-08-12; see "No live CLI
+  calls" above). If live invocation is ever added, it must clear all
+  of the following before it ships:
+  - Runs in a throwaway, disposable environment (container or
+    equivalent) — never the maintainer's own machine or a shared CI
+    runner's persistent state.
+  - Network-egress-restricted — the live process should not be able to
+    reach anything beyond what the specific test requires.
+  - No real secrets, ever — synthetic/placeholder credentials only.
+  - Explicit, agreed-upon ownership of API cost before any run that
+    calls a paid model/API.
+  This is a gate, not a roadmap.
+- **Multilingual coverage.** Regex patterns and semantic `references`
+  are English-only today (see Limitations in README). Extending to
+  other languages — new regex vocabulary, new reference sentences, and
+  re-running the calibration process per language — is tracked as
+  future work, not scheduled. Lower priority than the items above; pick
+  up as a separate, standalone task rather than folding it into an
+  unrelated change.
+
 ## File map
 
 The contract-relevant surfaces — the ones this file's invariants are
@@ -205,6 +289,7 @@ about:
   rules.d/<target>.yaml       — per-target overlay, merged on top of rules/rules.yaml
   test_cases/prompts.yaml     — the prompt bank (platform / semantic_only per case)
 scripts/run_pentest.py        — the harness: scope, merge, evaluate, report
+scripts/simulate_approval.py  — approval-state simulation layer (separate testing dimension)
 .github/workflows/guardrail-pentest.yml — CI: 4-way matrix + optional semantic job
 ```
 
