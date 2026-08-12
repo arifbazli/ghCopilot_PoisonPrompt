@@ -122,6 +122,40 @@ fail-open; nothing about CI changes unless a workflow opts in. The
 report's `semantic.fail_closed` field records which mode a given run
 used.
 
+## Simulated approval-state layer (`scripts/simulate_approval.py`)
+
+A second, independent testing dimension from deny/allow detection —
+confirmed 2026-08-12 as **simulated-only** (never a live CLI call) and
+**deterministic instrumentation** (never an LLM-as-judge): given a
+prompt's already-computed `matched_categories` (the same regex+semantic
+union `evaluate()` produces), `classify_approval_state(target,
+prompt_text, matched_categories)` classifies which approval STATE a
+target's *documented* permission/approval mechanics would land in —
+`single_command_confirm` (default), `session_wide_bypass`
+(`--allow-all-tools` / `--dangerously-skip-permissions` /
+`bypassPermissions` mode), `partial_bypass_edits_only`
+(`claude_code_cli`'s `acceptEdits` mode only), or `auto_decline`
+(`harness_agent`-only — a tool call outside its configured scope
+rejected before any human-facing confirmation; a common least-privilege
+tool-scoping pattern, not a documented vendor flag like the other three
+states — flagged as a modeling assumption, not verified vendor fact).
+
+The insight this layer surfaces: most deny categories
+(`destructive_commands`, `secret_exfiltration`, `instruction_override`,
+`indirect_injection`, etc.) don't change a platform's own state — the
+platform just sees a request and asks about it, same as it would for a
+benign one. Only `permission_bypass` (and, for `harness_agent`,
+`tool_scope_abuse`) changes the platform's *persistent* state, which is
+exactly why `permission_bypass` is uniquely dangerous: the risk isn't
+"this one action is bad," it's "the safety net disappears for everything
+after this."
+
+Self-contained: `python scripts/simulate_approval.py` runs its own
+`TEST_CASES` list (regex-catchable bank cases only, so it needs no
+`--enable-semantic` deps) and reports pass/fail — same empirical-
+verification discipline as the main harness, just not wired into
+`run_pentest.py` itself (a deliberately separate, small module).
+
 ## CI pipeline (`.github/workflows/guardrail-pentest.yml`)
 
 **Triggers:** `push`/`pull_request` on skill files, workflows,
@@ -248,6 +282,7 @@ about:
   rules.d/<target>.yaml       — per-target overlay, merged on top of rules/rules.yaml
   test_cases/prompts.yaml     — the prompt bank (platform / semantic_only per case)
 scripts/run_pentest.py        — the harness: scope, merge, evaluate, report
+scripts/simulate_approval.py  — approval-state simulation layer (separate testing dimension)
 .github/workflows/guardrail-pentest.yml — CI: 4-way matrix + optional semantic job
 ```
 

@@ -119,6 +119,10 @@ python3 scripts/run_pentest.py --enable-semantic
 
 # make a semantic-layer load failure a hard error instead of a warning
 python3 scripts/run_pentest.py --enable-semantic --fail-closed
+
+# simulated approval-state layer (separate dimension: what would a
+# target's OWN documented approval mechanics do, given a verdict?)
+python3 scripts/simulate_approval.py
 ```
 
 Local runs are byte-identical to CI: same Python 3.12, same venv install
