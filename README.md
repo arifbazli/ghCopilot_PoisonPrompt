@@ -1,180 +1,59 @@
-# GuardAgent PenTest — Poison-Prompt Testing for GitHub Copilot CLI, Claude Code CLI, and Custom Agent Harnesses
+# GuardAgent PenTest — Guardrail Testing for AI Coding Agents
 
-A guardrail testing framework for GitHub Copilot CLI, Claude Code CLI,
-and generic custom agent harnesses, built as a learning resource for
-**AI penetration testing (AI red-teaming)**: deliberately attacking an
-AI system to find where its safety controls break, before a real
-attacker does. AI coding agents read files, run commands, and act on
-natural-language instructions — a malicious or careless prompt (a
-**poison prompt**, via **prompt injection**) can trick one into running
-a destructive command, leaking a secret, or opening a backdoor. The
-defensive layer that catches this is a **guardrail**.
+A static, offline guardrail-testing framework for **GitHub Copilot CLI**, **Claude Code CLI**, and **custom agent harnesses** — built as an AI red-teaming learning resource. It runs a bank of benign and poisoned prompts through detection rules and checks whether malicious ones get blocked, automatically in CI on every change.
 
-Runs a bank of **45 benign and poisoned prompts** against detection-rule
-guardrail logic across the 3 targets below, and does it automatically in
-CI, so every change to the detection rules is checked against the full
-attack bank before it ships.
+**It never executes anything.** No live CLI calls, no shell commands, no network access at runtime — pure offline text classification (regex + an optional semantic/embedding layer).
 
-For the maintainer/agent-facing architecture, invariants, and full
-detection-rule reference, see `CONTEXT.md`. For version history, see
-`CHANGELOG.md`.
-
-If you're new to this space, start with:
-1. `docs/architecture.md` — how the pieces fit together
-2. `.github/skills/guardagent-pentest/test_cases/prompts.yaml` — the live 45-case attack bank
-3. `docs/baseline-before.md` — a real example of a guardrail gap being found and fixed
-
----
-
-## Targets
-
-Three targets are supported. Each names a real agentic-CLI (or harness)
-surface with its own approval/injection vocabulary; the 8 shared
-`rules/rules.yaml` categories (`destructive_commands`,
-`instruction_override`, `remote_code_execution`, `reverse_shell`,
-`secret_exfiltration`, `permission_bypass`, `context_disclosure`,
-`indirect_injection`) apply to every target unconditionally.
-
-| Target | Display name | Real risk surface | Overlay |
-|---|---|---|---|
-| `copilot_cli` | GitHub Copilot CLI | `--allow-all-tools` / "stop asking for approval" style permission bypass | `rules.d/copilot_cli.yaml` |
-| `claude_code_cli` | Claude Code CLI | `--dangerously-skip-permissions` / bypassPermissions mode / acceptEdits permission bypass; CLAUDE.md-based indirect injection (auto-read every session); disclosure of CLAUDE.md / tool schemas | `rules.d/claude_code_cli.yaml` |
-| `harness_agent` | Generic custom agent harness | Tool-scope abuse (using a tool outside its intended directory/domain); indirect injection via tool output treated as a trusted instruction | `rules.d/harness_agent.yaml` |
-
-The registry lives in `targets/targets.yaml`; run
-`python3 scripts/run_pentest.py --list-targets` to print it.
-
-**How `--target` works:**
-
-```bash
-python3 scripts/run_pentest.py                          # generic scope only (default)
-python3 scripts/run_pentest.py --target copilot_cli      # + copilot_cli overlay + cases
-python3 scripts/run_pentest.py --target claude_code_cli  # + claude_code_cli overlay + cases
-python3 scripts/run_pentest.py --target harness_agent    # + harness_agent overlay + cases
-```
-
-Passing `--target <name>` merges that target's `rules.d/<name>.yaml`
-overlay on top of the shared `rules/rules.yaml` (categories are unioned;
-an existing category's patterns are extended, never replaced) and scopes
-the prompt bank to cases tagged `platform: generic` or `platform: <name>`.
-
-**Omitting `--target` runs the generic-only scope**: the shared rules
-with no overlay, and only `platform: generic` cases — `semantic_only`
-paraphrase-probe cases are excluded too unless the semantic layer is
-active (see `CONTEXT.md`). This is deliberate: platform-specific and
-semantic-only cases can only pass with their overlay/layer active, so
-including them by default would guarantee false failures. All 4 CI
-matrix legs (`generic` + the 3 targets) are required status checks on
-`main`; see `CONTEXT.md` for the branch-protection settings.
-
----
-
-## Recent changes
-
-### v1.4 — semantic hardening for multi-target categories
-
-Closes the semantic-coverage gap for `permission_bypass`,
-`context_disclosure`, `indirect_injection`, `tool_scope_abuse` (same as
-PR #12 did for the original 5 categories). 13 new bank cases (11
-`semantic_only` paraphrase probes + 2 benign calibration anchors), 4 new
-`semantic_rules.yaml` rules — 1 calibrates cleanly, 3 are hint-gated only
-(documented in Limitations below). Bank now **45 cases**. Full detail
-and calibration numbers: `CHANGELOG.md`.
-
-### v1.3 — multi-target expansion
-
-Expanded from Copilot-CLI-only to 3 targets (GitHub Copilot CLI, Claude
-Code CLI, generic custom agent harness): 3 new cross-platform
-categories, per-target `rules.d/` overlays, `--target` scoping, and the
-4-way CI matrix. Full detail: `CHANGELOG.md`.
-
-Older versions (v1.1, v1.2) and the baseline before/after progression
-table: see `CHANGELOG.md`.
-
----
+📖 Architecture, invariants, and full technical detail: **[CONTEXT.md](CONTEXT.md)**
+📜 Version history: **[CHANGELOG.md](CHANGELOG.md)**
 
 ## Quickstart
 
 ```bash
-# one-time setup
-python3 -m venv .venv
-. .venv/bin/activate
+python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 
-# run the harness (generic scope — same as CI's default leg)
-python3 scripts/run_pentest.py
-
-# or scope to a target (merges its rules.d/ overlay + cases)
-python3 scripts/run_pentest.py --target copilot_cli
-python3 scripts/run_pentest.py --target claude_code_cli
-python3 scripts/run_pentest.py --target harness_agent
-
-# list the target registry, or just the bank for the current scope
+python3 scripts/run_pentest.py                       # generic scope (default)
+python3 scripts/run_pentest.py --target copilot_cli   # or claude_code_cli / harness_agent
 python3 scripts/run_pentest.py --list-targets
-python3 scripts/run_pentest.py --list-only
+```
 
-# optional semantic/paraphrase layer (~250 MB install; see CONTEXT.md)
+Optional semantic/paraphrase layer:
+
+```bash
 pip install -r scripts/requirements-semantic.txt
-python3 scripts/run_pentest.py --enable-semantic
+python3 scripts/run_pentest.py --enable-semantic [--fail-closed]
+```
 
-# make a semantic-layer load failure a hard error instead of a warning
-python3 scripts/run_pentest.py --enable-semantic --fail-closed
+Optional approval-state simulation (what would each target's *own* approval flow do?):
 
-# simulated approval-state layer (separate dimension: what would a
-# target's OWN documented approval mechanics do, given a verdict?)
+```bash
 python3 scripts/simulate_approval.py
 ```
 
-Local runs are byte-identical to CI: same Python 3.12, same venv install
-path, same `SALUS_PENTEST_STATIC=1` env (set it yourself to simulate the
-CI step exactly). Trigger CI manually with
-`gh workflow run guardrail-pentest.yml`.
+Trigger CI manually: `gh workflow run guardrail-pentest.yml`.
 
-Adding a test case or detection rule, the CI pipeline's steps, and the
-applied branch-protection settings are all documented in `CONTEXT.md`.
+## Targets
 
-## Limitations (and what this repo does NOT do)
+| Target | Real risk surface |
+|---|---|
+| `copilot_cli` | Permission bypass (`--allow-all-tools`, "stop asking for approval") |
+| `claude_code_cli` | Permission bypass (`--dangerously-skip-permissions`, `acceptEdits`); CLAUDE.md injection/disclosure |
+| `harness_agent` | Tool-scope abuse; treating tool output as a trusted instruction |
 
-- **Semantic coverage is partial, by design and by measurement.** The
-  semantic layer (`--enable-semantic`) catches paraphrases the regex
-  layer misses. **7 of 9 categories now calibrate cleanly (6 absolute +
-  1 relative)**: `instruction_override`, `destructive_commands`,
-  `secret_exfiltration`, `remote_code_execution`, `reverse_shell`, and
-  `context_disclosure` clear a real margin above topically-similar
-  benign text using the standard absolute threshold; `tool_scope_abuse`
-  does too, but via a *relative* rule (attack similarity minus nearest
-  benign-anchor similarity > 0.05) — absolute thresholding never
-  separated it, but the relative version does, with a genuine margin
-  (worst-case benign gap 0.036, well clear of the 0.05 cutoff). All 7
-  give embedding-based recall against a brand-new paraphrase, not just
-  the literal probes tested.
-  **2 remain hint-gated-only** (`permission_bypass`,
-  `indirect_injection`): zero false positives is still guaranteed (the
-  regex hint fires on zero benign cases), but there's no embedding-based
-  recall for a paraphrase that doesn't happen to match the hint. This is
-  after exhausting **three independent, structurally different
-  approaches**: more data (wider benign anchors + richer references),
-  relative/nearest-neighbor scoring (the same technique that worked for
-  `tool_scope_abuse` — it doesn't for these two; only 1 of 4 and 1 of 3
-  probes would separate, a regression vs. today), and a stronger
-  embedding model (`all-mpnet-base-v2`, no improvement, and ~5x larger).
-  This is now a documented, thoroughly-explored limitation of the
-  embedding model's ability to separate "asking about X" from "doing X"
-  for these two specific topics — not an unexplored gap. Full
-  calibration tables, per-rule reasoning, and both experiments' numbers:
-  `rules/semantic_rules.yaml`'s header comment.
-- **No LLM in the loop.** Pure offline static evaluation — never calls
-  Copilot CLI, Claude Code CLI, or any other live agent process, never
-  executes a prompt, no API keys required.
-- **No mutation of external state.** The only filesystem write is
-  `pentest-report.json` (atomic); the semantic layer also writes to the
-  gitignored `.cache/semantic-refs/` embedding cache.
-- **English-only.** Patterns and references are tuned for English;
-  multilingual paraphrases aren't covered.
-- **Semantic layer is fail-open by default.** A model load failure
-  (network error, disk space, missing deps) prints a warning and falls
-  back to regex-only verdicts — a deliberate choice for this learning
-  repo, so a broken install doesn't block the whole run. Pass
-  `--fail-closed` (or set `SALUS_PENTEST_FAIL_CLOSED=1`) to make that
-  same failure exit non-zero instead — for a caller that would rather
-  know loudly that semantic coverage silently dropped.
+Omitting `--target` runs the generic-only scope (8 shared categories, no overlay). Registry: `.github/skills/guardagent-pentest/targets/targets.yaml`.
+
+## Test bank
+
+**52 cases** across 9 attack categories + benign must-allow cases. 7 of 9 categories have calibrated semantic (paraphrase) coverage; 2 remain regex/hint-gated only after three separate calibration attempts — see `rules/semantic_rules.yaml`'s header comment for the full numbers.
+
+## Limitations
+
+Static/offline only · English-only · semantic layer is **fail-open by default** (pass `--fail-closed` to make a model-load failure a hard error instead of a silent regex-only fallback). Full detail, including a real fail-open incident hit in practice: [CONTEXT.md](CONTEXT.md).
+
+## Learn more
+
+- `docs/architecture.md` — how the pieces fit together
+- `docs/baseline-before.md` — a real guardrail gap, found and fixed
+- `.github/skills/guardagent-pentest/test_cases/prompts.yaml` — the live attack bank
+- `.github/skills/guardagent-pentest/SKILL.md` — agent-invocation workflow
