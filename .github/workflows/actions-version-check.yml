@@ -52,10 +52,16 @@ jobs:
                   # covered by GH-managed security, skip them.
                   continue
               rows.append({"owner": owner, "repo": repo, "sha": sha, "tag": tag})
+          # Audit finding #20 (2026-08-17): the same action@sha is `uses:`'d
+          # from multiple jobs/steps in guardrail-pentest.yml (e.g.
+          # actions/checkout appears once per job) — dedupe by
+          # (owner, repo, sha, tag) so the next step doesn't run a
+          # redundant `git ls-remote` per duplicate occurrence.
+          rows = list({(r["owner"], r["repo"], r["sha"], r["tag"]): r for r in rows}.values())
           out = os.environ["GITHUB_OUTPUT"]
           with open(out, "a") as fh:
               fh.write(f"actions={json.dumps(rows, separators=(',', ':'))}\n")
-          print(f"Parsed {len(rows)} third-party Action(s):")
+          print(f"Parsed {len(rows)} unique third-party Action(s):")
           for r in rows:
               print(f"  {r['owner']}/{r['repo']} @ {r['sha'][:12]}  (tag={r['tag'] or '<none>'})")
           PY
@@ -115,6 +121,15 @@ jobs:
           REPORT: ${{ steps.diff.outputs.report }}
           ISSUE_NUMBER: 4
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Audit finding #21 (2026-08-17): these were previously spliced
+          # directly into the run_id/server_url/repository line inside the
+          # Python heredoc below via ${{ }} — safe today (none of these
+          # three are attacker-controlled), but the same splice pattern
+          # would be exploitable with a different context value, so route
+          # through env/os.environ like everything else in this step does.
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -156,7 +171,7 @@ jobs:
               "",
               "---",
               "",
-              f"_Run: [`${{ github.run_id }}`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_",
+              f"_Run: [`{os.environ['RUN_ID']}`]({os.environ['SERVER_URL']}/{os.environ['REPO']}/actions/runs/{os.environ['RUN_ID']})_",
           ]
           body = "\n".join(lines)
 
