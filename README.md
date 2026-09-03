@@ -53,7 +53,7 @@ Static/offline only · English-only · semantic layer is **fail-open by default*
 
 ## Learn more
 
-- `docs/architecture.md` — how the pieces fit together
+- `docs/architecture.md` — pre-multi-target historical snapshot (see `CONTEXT.md` for the current architecture)
 - `docs/baseline-before.md` — a real guardrail gap, found and fixed
 - `.github/skills/guardagent-pentest/test_cases/prompts.yaml` — the live attack bank
 - `.github/skills/guardagent-pentest/SKILL.md` — agent-invocation workflow
