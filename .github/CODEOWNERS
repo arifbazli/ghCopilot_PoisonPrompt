@@ -1,3 +1,7 @@
 # P0-4: enforce a reviewer on security-critical paths.
 /.github/workflows/      @arifbazli
 /.github/skills/         @arifbazli
+# Audit finding #14 (2026-08-17): this file controls the actual branch
+# protection merge gate applied via `gh api ... --input`; it belongs
+# alongside the workflow/skill paths above, not left uncovered under docs/.
+/docs/branch-protection.json  @arifbazli

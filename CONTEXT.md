@@ -146,6 +146,20 @@ used.
   exists precisely for callers that can't tolerate this ambiguity, but
   it is opt-in, not the default, and no CI workflow currently opts in.
 
+- **Local semantic-layer development on Windows is unreliable** (audit
+  finding #19). Installing `sentence-transformers`/`torch` into a
+  project-local `.venv` on Windows has hit `MAX_PATH` corruption in
+  practice — deeply nested wheel-extraction paths exceed the default
+  260-character limit and leave `torch` uninstallable (missing `RECORD`
+  file), even after deleting and recreating the `.venv`. This is a
+  Windows-filesystem limitation, not a bug in this repo. Every semantic-
+  layer calibration and verification in this project's history has been
+  done on GitHub Actions (Ubuntu) instead — regex-only work is unaffected
+  and develops fine locally on any OS. If local semantic-layer testing on
+  Windows is ever needed, use WSL or enable long-path support
+  (`git config --system core.longpaths true` plus the Windows registry
+  `LongPathsEnabled` key) before installing torch.
+
 ## Simulated approval-state layer (`scripts/simulate_approval.py`)
 
 A second, independent testing dimension from deny/allow detection —
@@ -178,7 +192,10 @@ Self-contained: `python scripts/simulate_approval.py` runs its own
 `TEST_CASES` list (regex-catchable bank cases only, so it needs no
 `--enable-semantic` deps) and reports pass/fail — same empirical-
 verification discipline as the main harness, just not wired into
-`run_pentest.py` itself (a deliberately separate, small module).
+`run_pentest.py` itself (a deliberately separate, small module). Wired
+into CI (audit finding #12, fixed 2026-08-17) as its own step on the
+`pentest` job's `generic` leg only — it covers every target internally,
+so running it once per workflow run is enough.
 
 ## CI pipeline (`.github/workflows/guardrail-pentest.yml`)
 
@@ -204,10 +221,15 @@ failure → fail the job if any case mismatched.
 `concurrency: { group: pentest-<workflow>-<ref>, cancel-in-progress: true }`,
 `timeout-minutes: 10`.
 
-**`semantic-pentest` job** — same harness with `--enable-semantic`,
-`schedule`/`workflow_dispatch` only (not every PR — the ~250 MB
-torch/sentence-transformers install and ~14s runtime stay off the fast
-path).
+**`semantic-pentest` job — same 4-way matrix as `pentest`** over
+`[generic, copilot_cli, claude_code_cli, harness_agent]`, running the
+harness with `--enable-semantic` instead of plain regex. Fixed 2026-08-17
+(audit finding #2): this paragraph used to describe a single-run job,
+contradicting the `pentest` job's correctly-described matrix a few
+paragraphs up — PR #18 converted it to a matrix on 2026-08-12, this text
+just hadn't caught up. `schedule`/`workflow_dispatch` only (not every PR
+— the ~250 MB torch/sentence-transformers install and ~14s-per-leg
+runtime stay off the fast path).
 
 **Action SHA drift:** the 3 pinned SHAs correspond to upstream tags
 `v4.2.2` / `v5.6.0` / `v4` at audit time and will drift over time; the
@@ -232,6 +254,11 @@ false` (same single-collaborator reason — CODEOWNERS stays in place and
 activates automatically once a 2nd maintainer is added);
 `required_linear_history: true`; `allow_force_pushes` /
 `allow_deletions: false`; `required_conversation_resolution: true`.
+
+Verified live 2026-09-03 (audit finding #25 — a prior attempt couldn't
+check this because the active `gh` account lacked admin on this repo;
+re-checked with the `arifbazli` account) — live state matches
+`docs/branch-protection.json` exactly, zero drift.
 
 ## Contributor workflows
 

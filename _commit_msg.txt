@@ -1,0 +1,61 @@
+fix: audit findings 2, 10-12, 14-23, 25 (batch 2)
+
+Covers everything from the 4-fork audit except #13 (semantic regex_hints
+too broad -- needs a live-embedding verification pass before deciding
+whether to tighten, done as a separate commit on this branch) and #24
+(cosmetic Node 20 warnings, no action needed per existing SHA-bump
+invariant).
+
+- #2 (Crit): CONTEXT.md's CI pipeline section described semantic-pentest
+  as single-run; it's the same 4-way matrix as pentest since PR #18.
+- #10: regex+semantic merge-logic dedup -- extracted _merge_semantic_matches(),
+  used by evaluate() and main()'s hot loop; removed the elif branch's
+  per-prompt semantic_layer.check() calls, which were provably dead
+  (status() already established not-ready, so sem_matched was always []).
+- #11: assert_rule_coverage()'s error now mentions semantic_only as a
+  possible cause of an apparently-dead category.
+- #12: simulate_approval.py guards unknown TEST_CASES ids with a clear
+  error instead of a raw KeyError; wired into CI as its own step on the
+  pentest job's generic leg (runs once, covers every target internally).
+- #14: docs/branch-protection.json (the actual merge-gate payload) added
+  to CODEOWNERS.
+- #15: README's semantic_rules.yaml path was missing its
+  .github/skills/guardagent-pentest/ prefix.
+- #16: the ref-cache fallback dir (used only if semantic_rules.yaml ever
+  drops model.cache_dir) pointed at .cache/semantic-refs, a path nothing
+  else in the repo caches or references -- aligned to
+  .cache/sentence-transformers, the directory actually cached in CI.
+- #17: validate_prompts() now rejects two benign cases with identical
+  prompt text -- SemanticLayer's leave-one-out benign exclusion is keyed
+  by text and would silently fail to exclude a duplicate.
+- #18: removed redundant local hashlib/json re-imports in
+  SemanticLayer._ensure_loaded() (module-level imports already cover them).
+- #19: documented the Windows MAX_PATH/torch-install failure mode (hit
+  hard this session) in CONTEXT.md's Known limitations, with the WSL/
+  long-paths workaround.
+- #20: actions-version-check.yml now dedupes parsed Action rows by
+  (owner, repo, sha, tag) before the ls-remote comparison step -- the same
+  action@sha appearing in multiple jobs no longer triggers one redundant
+  network lookup per occurrence.
+- #21: replaced every ${{ }} spliced directly into a run: shell/script
+  body (both workflow files) with env: + shell/os.environ variables.
+  None of the specific values were attacker-controlled today, but the
+  splice pattern is the same one that would be exploitable with a
+  different context value.
+- #22: semantic_rules.yaml's meterpreter hint dropped the redundant
+  [Mm] case alternation -- every hint already compiles with re.IGNORECASE.
+- #23: targets.yaml's claude_code_cli description now mentions
+  context_disclosure, which its overlay has added since the multi-target
+  expansion.
+- #25: live-checked branch protection with the correct (arifbazli, admin)
+  account -- exact match with docs/branch-protection.json, zero drift.
+  CONTEXT.md now records the verification date.
+
+Verified locally before committing: regex-only harness across all 4
+scopes (32/32, 35/35, 37/37, 38/38 -- includes 5 new near-miss benign
+cases added for finding #13, see next commit) + simulate_approval.py
+(14/14) + scratch scripts confirming the #10/#11/#17 logic changes
+behave identically to before (torch not available locally, so the
+semantic/embedding-dependent parts of #10's refactor were verified via
+the fail-open/import_error code path, which exercises the exact branch
+that changed).

@@ -140,7 +140,18 @@ def main():
         if target not in rules_cache:
             rules_cache[target] = merged_rules_for(target, base_raw, targets_registry)
         rules = rules_cache[target]
-        case = by_id[case_id]
+        # Audit finding #12 (2026-08-17): TEST_CASES hardcodes prompt ids;
+        # a future prompts.yaml renumbering (or a case getting deleted)
+        # would previously crash here with a raw KeyError instead of a
+        # message pointing at the actual cause.
+        case = by_id.get(case_id)
+        if case is None:
+            print(
+                f"ERROR: TEST_CASES references prompt id {case_id!r}, which "
+                f"is not in {rp.PROMPTS_PATH} — check for renumbering.",
+                file=sys.stderr,
+            )
+            return 2
         _, matched = rp.evaluate_regex(case["prompt"], rules)
         actual = classify_approval_state(target, case["prompt"], matched)
         ok = actual == expected

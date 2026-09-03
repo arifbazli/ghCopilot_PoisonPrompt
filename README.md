@@ -45,7 +45,7 @@ Omitting `--target` runs the generic-only scope (8 shared categories, no overlay
 
 ## Test bank
 
-**52 cases** across 9 attack categories + benign must-allow cases. 7 of 9 categories have calibrated semantic (paraphrase) coverage; 2 remain regex/hint-gated only after three separate calibration attempts — see `rules/semantic_rules.yaml`'s header comment for the full numbers.
+**52 cases** across 9 attack categories + benign must-allow cases. 7 of 9 categories have calibrated semantic (paraphrase) coverage; 2 remain regex/hint-gated only after three separate calibration attempts — see `.github/skills/guardagent-pentest/rules/semantic_rules.yaml`'s header comment for the full numbers.
 
 ## Limitations
 
