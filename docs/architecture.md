@@ -1,4 +1,14 @@
-# GuardAgent PenTest — High-Level Architecture
+# GuardAgent PenTest — High-Level Architecture (historical snapshot)
+
+**This is a point-in-time snapshot from before the multi-target
+expansion (PR #13)**, kept as a permanent reference the same way
+`docs/baseline-before.md` preserves the pre-v1.1 rule set — it is not
+patched forward as the harness evolves. It predates `--target`, the
+`rules.d/<target>.yaml` overlays, the `targets/targets.yaml` registry,
+the `permission_bypass`/`context_disclosure`/`indirect_injection`/
+`tool_scope_abuse` categories, the 4-way CI matrix on both jobs, and
+`scripts/simulate_approval.py`. For the current architecture, CI
+pipeline, and detection-rules reference, see **[CONTEXT.md](../CONTEXT.md)**.
 
 ```mermaid
 flowchart TD

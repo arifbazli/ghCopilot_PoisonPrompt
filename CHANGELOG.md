@@ -3,6 +3,83 @@
 Full version history. README.md keeps only the latest 1-2 entries;
 everything older lives here.
 
+## v1.7 (PR #20 — audit remediation, batch 1)
+
+First fixes from a deep 4-fork repo audit (Python harness, rules/data
+layer, CI/CD, docs consistency):
+
+- **CI permissions** — `pentest`/`semantic-pentest` jobs get explicit
+  `pull-requests: write` / `issues: write` (job-level override of the
+  workflow's `contents: read` default). The "Comment on PR" and
+  "Schedule regression" steps had been silently no-op'ing since
+  inception — confirmed against real run logs (`Resource not accessible
+  by integration`, swallowed by `continue-on-error`/`check=False`): zero
+  PR comments or regression issues had ever actually posted before this
+  fix. Verified fixed by opening PR #20 itself — 4 comments posted, one
+  per matrix leg, for the first time in this repo's history.
+- **CI caching** — `semantic-pentest` now caches pip deps (`setup-python`
+  built-in) and the sentence-transformers model + this repo's own
+  embedding cache (`actions/cache`, pinned to v6.1.0's real SHA resolved
+  via `gh api`, not guessed). Direct fix for the fail-open incident
+  documented in `CONTEXT.md`'s "Known limitations" section, which the
+  4-way semantic matrix (v1.5) had quadrupled the exposure to.
+- **Cache-digest bug** — the embedding cache digest now hashes
+  `model_name` alongside the text content. Before this fix, swapping
+  models (e.g. the `all-mpnet-base-v2` experiment in v1.5) while an old
+  cache file existed on disk would silently load wrong-dimension vectors
+  and crash the scoring matmul uncaught. Reproduced the crash before the
+  fix, confirmed digests differ per model after it.
+- **`re.error` handling** — `compile_rules()` and
+  `SemanticLayer._compile_hints()` now catch `re.error` (not a
+  `ValueError` subclass) and re-raise as `ValueError`, so a malformed
+  regex in any rules file exits cleanly via the harness's normal
+  `ERROR:` + exit-2 path instead of a raw traceback.
+
+## v1.6 (PR #19 — README rewrite)
+
+`README.md` rewritten from 147 to 39 lines — cut content already
+duplicated in `CONTEXT.md` (architecture/invariants) and this file
+(version history); kept only what the repo is, quickstart commands, a
+compact Targets table, the bank-size headline, and pointers onward.
+Numbers re-verified against the live repo rather than carried forward.
+
+## v1.5 (PRs #15, #17, #18 — red-team hardening, honest recalibration, semantic CI matrix)
+
+- **PR #15** — `--fail-closed` / `SALUS_PENTEST_FAIL_CLOSED=1`: a
+  semantic-layer load failure aborts instead of silently degrading to
+  regex-only (fail-open stays the default). New
+  `scripts/simulate_approval.py` — a second, independent testing
+  dimension: given a prompt's matched categories, deterministically
+  classifies which approval state a target's *documented* permission
+  mechanics would land in (`single_command_confirm`,
+  `session_wide_bypass`, `partial_bypass_edits_only`, `auto_decline`).
+  `CONTEXT.md` gained a scope-of-testing policy (self-red-teaming only,
+  never a third party's target) and a "Deferred work" section (live-mode
+  sandboxing gate, multilingual coverage). A recalibration re-attempt on
+  the 3 hint-gated categories (benign anchors widened 6→18, richer
+  references) improved margins for 2 of 3 but achieved clean separation
+  for none — documented as a real negative result, not forced.
+- **PR #17** — closed the gap for `tool_scope_abuse` via a structurally
+  *different* technique: relative/nearest-neighbor scoring
+  (`attack_sim - benign_sim > margin`, gated per-rule via a new
+  `scoring_mode` field) instead of an absolute threshold. Genuine
+  separation confirmed via CI: both probes clear the margin, worst-case
+  benign gap 0.036. The same technique — plus, independently, a
+  stronger model (`all-mpnet-base-v2`) — was also tried on
+  `permission_bypass`/`indirect_injection`; both regressed or didn't
+  help, so those two stay hint-gated, now backed by 3 documented,
+  structurally different failed attempts rather than an unexplored gap.
+  **7 of 9 categories now calibrate cleanly** (6 absolute + 1 relative).
+- **PR #18** — `semantic-pentest` converted to the same 4-way matrix as
+  `pentest` (`generic`/`copilot_cli`/`claude_code_cli`/`harness_agent`).
+  Previously only `generic` had permanent semantic CI coverage; a
+  `rules.d/*.yaml` regression on any other target's semantic coverage
+  could only be caught by a manual scratch-branch check — which is
+  exactly what happened once, and directly motivated this PR.
+
+Bank grew across these three PRs — case 52 added (Claude's `acceptEdits`
+nuance state) brings the total to **52 cases**.
+
 ## v1.4 (semantic hardening for multi-target categories)
 
 Closes the semantic-coverage gap for the 4 categories added in v1.3
@@ -146,3 +223,4 @@ real coverage gain only on the literal-substring axis.
 | After v1.1 (anchored + paraphrased) | 18 cases | 18/18 (100%) | de-circularized; `assert_rule_coverage()` now prevents silent regression |
 | After v1.3 (multi-target expansion) | 32 cases, 4 scopes | generic 22/22, copilot_cli 25/25, claude_code_cli 26/26, harness_agent 25/25 (all 100%) | new `permission_bypass`/`context_disclosure`/`indirect_injection`/`tool_scope_abuse` categories; `assert_rule_coverage()` validates per-scope |
 | **After v1.4 (semantic hardening)** | **45 cases, 4 scopes** | **regex-only: generic 24/24, copilot_cli 27/27, claude_code_cli 28/28, harness_agent 27/27 — semantic-enabled: 27/27, 32/32, 34/34, 33/33 (all 100%)** | 11 paraphrase probes added for the 4 new categories; 1 of 4 calibrates cleanly, 3 are hint-gated only (documented gap) |
+| **After v1.7 (relative scoring + CI matrix + audit remediation)** | **52 cases, 4 scopes** | **regex-only: generic 28/28, copilot_cli 31/31, claude_code_cli 33/33, harness_agent 33/33 — semantic-enabled: 31/31, 36/36, 39/39, 39/39 (all 100%)** | 7 of 9 categories now calibrate cleanly (6 absolute + 1 relative for `tool_scope_abuse`); 2 remain hint-gated after 3 independent, documented calibration attempts. Numbers re-verified live, not carried forward. |
